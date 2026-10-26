@@ -1,0 +1,42 @@
+name: clinicflow-local
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: clinicflow
+      POSTGRES_USER: clinicflow
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run npm run setup first}
+    ports: ["127.0.0.1:5434:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clinicflow -d clinicflow"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  mail:
+    image: axllent/mailpit:v1.27
+    ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
+  app:
+    build: .
+    environment:
+      NODE_ENV: development
+      APP_MODE: local
+      DATABASE_URL: postgres://clinicflow:${DB_PASSWORD}@db:5432/clinicflow
+      APP_ORIGIN: http://localhost:3000
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?Run npm run setup first}
+      SMTP_HOST: mail
+      SMTP_PORT: 1025
+      DOCUMENT_DIR: /app/.local/documents
+    ports: ["127.0.0.1:3000:3000"]
+    volumes: ["documents:/app/.local/documents"]
+    depends_on:
+      db: {condition: service_healthy}
+      mail: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+volumes:
+  postgres-data:
+  documents:
