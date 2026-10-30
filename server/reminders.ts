@@ -7,11 +7,15 @@ export async function processReminders(){
  try{
  const jobs=await pool.query("SELECT id FROM reminders WHERE status='pending' AND due_at<=now() ORDER BY due_at LIMIT 30");
  for(const job of jobs.rows){
+  // Commit an ambiguous marker BEFORE touching SMTP. A crash cannot return the job
+  // to pending and silently resend a message already accepted by the provider.
+  const claim=await pool.query("UPDATE reminders SET status='ambiguous',reason='Delivery in progress or interrupted' WHERE id=$1 AND status='pending' RETURNING id",[job.id]);
+  if(!claim.rowCount)continue;
   await transaction(async c=>{
    // Same lock as booking and consent changes prevents stale sends during a mutation.
    await scheduleLock(c);
    const r=await c.query("SELECT r.*,a.status AS appointment_status,a.version,a.starts_at,u.email,u.consent,u.reminders,u.active FROM reminders r JOIN appointments a ON a.id=r.appointment_id JOIN users u ON u.id=a.patient_id WHERE r.id=$1 FOR UPDATE OF r",[job.id]);
-   const row=r.rows[0];if(!row||row.status!=='pending')return;
+   const row=r.rows[0];if(!row||row.status!=='ambiguous'||row.reason!=='Delivery in progress or interrupted')return;
    if(row.appointment_status!=='scheduled'||row.version!==row.appointment_version||!row.active||!row.consent||!row.reminders||new Date(row.starts_at).getTime()<=Date.now()){
     await c.query("UPDATE reminders SET status='suppressed',reason='Cancelled, stale, past, inactive, or no consent/preference' WHERE id=$1",[row.id]);return;
    }

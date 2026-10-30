@@ -3,7 +3,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import multer from 'multer';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z, ZodError } from 'zod';
@@ -90,11 +90,17 @@ app.post('/api/appointments',async(req,res)=>res.status(201).json(await book(req
 app.put('/api/appointments/:id',async(req,res)=>res.json(await book(req.user,req.body,z.string().uuid().parse(req.params.id))));
 app.post('/api/appointments/:id/cancel',async(req,res)=>{await cancel(req.user,z.string().uuid().parse(req.params.id));res.json({ok:true});});
 app.get('/api/availability',async(req,res)=>{
- const q=z.object({date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),therapistId:z.string().uuid(),roomId:z.string().uuid(),duration:z.coerce.number().int().min(15).max(120)}).parse(req.query);
+ const q=z.object({date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),therapistId:z.string().uuid(),roomId:z.string().uuid(),duration:z.coerce.number().int().min(15).max(120),appointmentId:z.string().uuid().optional()}).parse(req.query);
+ if(q.appointmentId){
+  const c=await pool.connect();try{
+   const a=(await c.query('SELECT patient_id FROM appointments WHERE id=$1',[q.appointmentId])).rows[0];
+   if(!a||!await patientAccess(c,req.user,a.patient_id,'change'))fail(403,'Access denied.');
+  }finally{c.release();}
+ }
  const settings=(await pool.query('SELECT * FROM settings WHERE id=1')).rows[0];
  const day=DateTime.fromISO(q.date,{zone:settings.timezone});
  if(!day.isValid)fail(400,'Invalid date.');
- const appointments=(await pool.query("SELECT starts_at,ends_at FROM appointments WHERE status='scheduled' AND (therapist_id=$1 OR room_id=$2) AND starts_at<$4 AND ends_at>$3",[q.therapistId,q.roomId,day.toISO(),day.plus({days:1}).toISO()])).rows;
+ const appointments=(await pool.query("SELECT starts_at,ends_at FROM appointments WHERE status='scheduled' AND (therapist_id=$1 OR room_id=$2) AND starts_at<$4 AND ends_at>$3 AND ($5::uuid IS NULL OR id<>$5)",[q.therapistId,q.roomId,day.toISO(),day.plus({days:1}).toISO(),q.appointmentId||null])).rows;
  const exceptions=(await pool.query('SELECT starts_at,ends_at FROM exceptions WHERE (therapist_id=$1 OR room_id=$2 OR (therapist_id IS NULL AND room_id IS NULL)) AND starts_at<$4 AND ends_at>$3',[q.therapistId,q.roomId,day.toISO(),day.plus({days:1}).toISO()])).rows;
  const slots:string[]=[];
  if(settings.weekdays.includes(day.weekday)){
@@ -176,7 +182,7 @@ app.post('/api/documents',upload.single('file'),async(req,res)=>{
   if(!await patientAccess(c,req.user,patientId,'document'))fail(403,'Access denied.');
   const id=randomUUID(),key=randomUUID();
   await writeFile(path.join(config.documents,key),file.buffer,{flag:'wx',mode:0o600});
-  await c.query('INSERT INTO documents(id,patient_id,uploader_id,name,mime,size,storage_key,sha256) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id,patientId,req.user.id,path.basename(file.originalname).slice(0,150),mime,file.size,key,digest(file.buffer.toString('base64'))]);
+  await c.query('INSERT INTO documents(id,patient_id,uploader_id,name,mime,size,storage_key,sha256) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id,patientId,req.user.id,path.basename(file.originalname).slice(0,150),mime,file.size,key,createHash('sha256').update(file.buffer).digest('hex')]);
   await audit(c,req.user.id,'document.uploaded',id);return {id};
  });res.status(201).json(result);
 });
@@ -270,6 +276,16 @@ app.post('/api/reminders/:id/retry',roles('administrator'),async(req,res)=>{
   await audit(c,req.user.id,'reminder.retried',id);
  });res.json({ok:true});
 });
+app.post('/api/reminders/:id/reconcile',roles('administrator'),async(req,res)=>{
+ const id=z.string().uuid().parse(req.params.id);
+ const b=z.object({outcome:z.enum(['sent','suppressed']),note:z.string().trim().min(8).max(160)}).parse(req.body);
+ await transaction(async c=>{
+  await scheduleLock(c);
+  const r=await c.query("UPDATE reminders SET status=$2,reason=$3,sent_at=CASE WHEN $2='sent' THEN now() ELSE sent_at END WHERE id=$1 AND status='ambiguous' RETURNING id",[id,b.outcome,b.note]);
+  if(!r.rowCount)fail(409,'Only ambiguous reminders require reconciliation.');
+  await audit(c,req.user.id,'reminder.reconciled.'+b.outcome,id);
+ });res.json({ok:true});
+});
 app.use('/api',(_req,res)=>res.status(404).json({error:'Endpoint not found.'}));
 app.use(express.static(path.resolve('dist'),{index:false}));
 app.get('/{*path}',(_req,res)=>res.sendFile(path.resolve('dist/index.html')));
@@ -286,6 +302,6 @@ app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.N
 });
 const timer=setInterval(()=>processReminders().catch(()=>console.error('Reminder worker failed')),30000);
 timer.unref();
-const server=app.listen(config.port,'0.0.0.0',()=>console.log('ClinicFlow local application: '+config.origin));
+const server=app.listen(config.port,config.host,()=>console.log('ClinicFlow local application: '+config.origin));
 process.on('SIGTERM',()=>{clearInterval(timer);server.close(()=>pool.end().then(()=>process.exit(0)));});
 
