@@ -79,7 +79,7 @@ No AWS resources have been created, no Terraform apply has run, and Project 1 is
 
 ## Git
 
-Private repository: https://github.com/CloudByCliff/clinicflow-aws-terraform
+Public portfolio repository: https://github.com/CloudByCliff/clinicflow-aws-terraform
 
 Credentials, environment files, local uploads, test artifacts, private keys, Terraform state, and variable files are ignored. Source and the three baseline documents are committed in meaningful milestones. No deployment workflow runs automatically on push.
 
