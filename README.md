@@ -1,5 +1,47 @@
 # ClinicFlow
 
+## ClinicFlow | Cloud Engineering & Software Architecture Case Study
+
+### The Business Challenge
+
+A fictional physical therapy clinic with six employees and an estimated 80 appointments per day needed to address scheduling conflicts, fragmented administrative workflows, and limited visibility across its care team.
+
+The challenge was to design a centralized scheduling solution that could improve coordination, enforce appropriate user permissions, and provide a foundation for future cloud deployment.
+
+### The Engineering Strategy
+
+The solution was planned around four priorities:
+
+- **Centralized scheduling:** Establish one consistent source of appointment information and prevent therapist or room conflicts.
+- **Role-based access:** Provide dedicated workspaces for patients, receptionists, therapists, and administrators.
+- **Containerized development:** Build a maintainable full-stack application with a reproducible local environment.
+- **Cloud architecture:** Design an AWS deployment strategy incorporating security, scalability, monitoring, and cost controls.
+
+### The Implementation
+
+**ClinicFlow** was developed using React, TypeScript, Node.js, PostgreSQL, and Docker.
+
+AI-assisted engineering tools supported prototyping, code development, troubleshooting, and iterative refinement, complemented by hands-on testing and technical validation.
+
+The proposed AWS infrastructure includes VPC networking, ECS Fargate, RDS PostgreSQL, Cognito, S3, IAM, CloudWatch, and Terraform.
+
+### The Demonstrated Outcome
+
+A functional local application was delivered with shared appointment scheduling, conflict prevention, role-specific access, patient workflows, reminder processing, and administrative functionality.
+
+**Validation:** 17 automated integration tests passed, with zero failures, against the local application and PostgreSQL database.
+
+The project demonstrates the process of translating business requirements into a working technical solution—from problem analysis and architecture planning through implementation and testing.
+
+### Explore the Project
+
+**[Launch Interactive ClinicFlow Demo](https://clinicflow-cloudbycliff.floot.app)**
+
+The public demonstration uses fictional data and simulates interactions in the browser. It is separate from the PostgreSQL-backed local application.
+
+**Current status:** Local application implemented and tested. AWS infrastructure designed but not yet deployed.
+
+See the architecture decisions and local verification documentation below for implementation details, test evidence, and remaining deployment requirements.
 A working local physical therapy scheduling application using React, TypeScript, Node.js, PostgreSQL, and Docker. All patient records are fictional.
 
 ## Start locally
